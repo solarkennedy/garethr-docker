@@ -3,7 +3,11 @@ require 'spec_helper_acceptance'
 describe 'docker class' do
   case fact('osfamily')
   when 'RedHat'
-    package_name = 'docker'
+    if fact('operatingsystemrelease').to_f >= 7
+      package_name = 'docker'
+    else
+      package_name = 'docker-io'
+    end
   else
     package_name = 'lxc-docker'
   end
@@ -11,48 +15,77 @@ describe 'docker class' do
   command = 'docker'
 
   context 'default parameters' do
-    it 'should work with no errors' do
-      pp = <<-EOS
-        class { 'docker': }
+    let(:pp) {"
+        class { 'docker': 
+          docker_users => [ 'testuser' ]
+        }
         docker::image { 'nginx': }
         docker::run { 'nginx':
-          image => 'nginx',
-          net   => 'host',
+          image   => 'nginx',
+          net     => 'host',
         }
-      EOS
-
-      # Run it twice and test for idempotency
-      expect(apply_manifest(pp).exit_code).to_not eq(1)
-      expect(apply_manifest(pp).exit_code).to eq(0)
+        docker::run { 'nginx2':
+          image   => 'nginx',
+          restart => 'always',
+        }
+        docker::run { 'nginx3':
+          image   => 'nginx',
+          use_name => true,
+        }
+    "}
+    it 'should apply with no errors' do
+      apply_manifest(pp, :catch_failures=>true)
+    end
+    it 'should be idempotent' do
+      apply_manifest(pp, :catch_changes=>true)
     end
 
     describe package(package_name) do
-      it { should be_installed }
+      it { is_expected.to be_installed }
     end
 
     describe service(service_name) do
-      it { should be_enabled }
-      it { should be_running }
+      it { is_expected.to be_enabled }
+      it { is_expected.to be_running }
     end
 
     describe command("#{command} version") do
-      it { should return_exit_status 0 }
-      it { should return_stdout(/Client version: /) }
+      its(:exit_status) { should eq 0 }
+      its(:stdout) { should match /Client version:/ }
     end
 
     describe command("sudo #{command} images") do
-      it { should return_exit_status 0 }
-      it { should return_stdout(/nginx/) }
+      its(:exit_status) { should eq 0 }
+      its(:stdout) { should match /nginx/ }
     end
 
     describe command("sudo #{command} ps -l --no-trunc=true") do
-      it { should return_exit_status 0 }
-      it { should return_stdout(/nginx\:/) }
+      its(:exit_status) { should eq 0 }
+      its(:stdout) { should match /nginx\:/ }
+    end
+
+    describe command("sudo #{command} ps") do
+      its(:exit_status) { should eq 0 }
+      its(:stdout) { should match /nginx3/ }
+    end
+
+    describe command("sudo #{command} inspect nginx3") do
+      its(:exit_status) { should eq 0 }
+    end
+
+    describe command("sudo #{command} ps --no-trunc | grep `cat /var/run/docker-nginx2.cid`") do
+      its(:exit_status) { should eq 0 }
+      its(:stdout) { should match /nginx\:/ }
     end
 
     describe command('netstat -tlndp') do
+      its(:exit_status) { should eq 0 }
+      its(:stdout) { should match /0\.0\.0\.0\:80/ }
+    end
+
+    describe command('id testuser | grep docker') do
       it { should return_exit_status 0 }
-      it { should return_stdout(/0\.0\.0\.0\:80/) }
+      it { should return_stdout(/docker/) }
     end
 
   end

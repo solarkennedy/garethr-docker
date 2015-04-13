@@ -14,6 +14,7 @@ describe 'docker', :type => :class do
           :operatingsystemrelease => '10.04',
         } }
         service_config_file = '/etc/default/docker'
+        storage_config_file = '/etc/default/docker'
 
         it { should contain_service('docker').with_hasrestart('false') }
         it { should contain_class('apt') }
@@ -25,30 +26,6 @@ describe 'docker', :type => :class do
         context 'with a custom version' do
           let(:params) { {'version' => '0.5.5' } }
           it { should contain_package('docker').with_name('lxc-docker-0.5.5').with_ensure('present') }
-        end
-
-        context 'with a custom package name' do
-          let(:params) { {'package_name' => 'docker-custom-pkg-name' } }
-          it { should contain_package('docker').with_name('docker-custom-pkg-name').with_ensure('present') }
-        end
-
-        context 'with a custom package name and version' do
-          let(:params) { {
-             'version'      => '0.5.5',
-             'package_name' => 'docker-custom-pkg-name',
-          } }
-          it { should contain_package('docker').with_name('docker-custom-pkg-name-0.5.5').with_ensure('present') }
-        end
-
-        context 'when not managing the package' do
-          let(:params) { {'manage_package' => false } }
-          it { should_not contain_package('docker') }
-        end
-
-        context 'It should accept custom prerequired_packages' do
-          let(:params) { {'prerequired_packages' => [ 'test_package' ],
-                          'manage_package'       => false,  } }
-          it { should contain_package('test_package').with_ensure('present') }
         end
 
         context 'with no upstream package source' do
@@ -79,9 +56,11 @@ describe 'docker', :type => :class do
       if osfamily == 'RedHat'
         let(:facts) { {
           :osfamily => osfamily,
+          :operatingsystem => 'RedHat',
           :operatingsystemrelease => '6.5'
         } }
         service_config_file = '/etc/sysconfig/docker'
+        storage_config_file = '/etc/sysconfig/docker-storage'
 
         context 'with proxy param' do
           let(:params) { {'proxy' => 'http://127.0.0.1:3128' } }
@@ -106,6 +85,7 @@ describe 'docker', :type => :class do
           :osfamily => osfamily,
         } }
         service_config_file = '/etc/conf.d/docker'
+        storage_config_file = '/etc/conf.d/docker'
       end
 
       it { should compile.with_all_deps }
@@ -116,6 +96,30 @@ describe 'docker', :type => :class do
       context 'with a specific docker command' do
         let(:params) {{ 'docker_command' => 'docker.io' }}
         it { should contain_file(service_config_file).with_content(/docker.io/) }
+      end
+
+     context 'with a custom package name' do
+        let(:params) { {'package_name' => 'docker-custom-pkg-name' } }
+        it { should contain_package('docker').with_name('docker-custom-pkg-name').with_ensure('present') }
+      end
+
+      context 'with a custom package name and version' do
+        let(:params) { {
+           'version'      => '0.5.5',
+           'package_name' => 'docker-custom-pkg-name',
+        } }
+        it { should contain_package('docker').with_name('docker-custom-pkg-name-0.5.5').with_ensure('present') }
+      end
+
+      context 'when not managing the package' do
+        let(:params) { {'manage_package' => false } }
+        it { should_not contain_package('docker') }
+      end
+
+      context 'It should accept custom prerequired_packages' do
+        let(:params) { {'prerequired_packages' => [ 'test_package' ],
+                        'manage_package'       => false,  } }
+        it { should contain_package('test_package').with_ensure('present') }
       end
 
       context 'with proxy param' do
@@ -140,7 +144,7 @@ describe 'docker', :type => :class do
 
       context 'with storage driver param' do
         let(:params) { { 'storage_driver' => 'devicemapper' }}
-        it { should contain_file(service_config_file).with_content(/--storage-driver=devicemapper/) }
+        it { should contain_file(storage_config_file).with_content(/--storage-driver=devicemapper/) }
       end
 
       context 'without execdriver param' do
@@ -179,6 +183,17 @@ describe 'docker', :type => :class do
         it { should contain_file(service_config_file).with_content(/--this this/) }
       end
 
+      context 'with multi shell values' do
+        let(:params) { {'shell_values' => ['--this this', '--that that'] } }
+        it { should contain_file(service_config_file).with_content(/--this this/) }
+        it { should contain_file(service_config_file).with_content(/--that that/) }
+      end
+
+      context 'with a string shell values' do
+        let(:params) { {'shell_values' => '--this this' } }
+        it { should contain_file(service_config_file).with_content(/--this this/) }
+      end
+
       context 'with socket group set' do
         let(:params) { { 'socket_group' => 'notdocker' }}
         it { should contain_file(service_config_file).with_content(/-G notdocker/) }
@@ -202,6 +217,20 @@ describe 'docker', :type => :class do
       context 'with service_enable set to true' do
         let(:params) { {'service_enable' => 'true'} }
         it { should contain_service('docker').with_enable('true') }
+      end
+
+      context 'with specific log_level' do
+        let(:params) { { 'log_level' => 'debug' } }
+        it { should contain_file(service_config_file).with_content(/-l debug/) }
+      end
+
+      context 'with an invalid log_level' do
+        let(:params) { { 'log_level' => 'verbose'} }
+        it do
+          expect {
+            should contain_package('docker')
+          }.to raise_error(Puppet::Error, /log_level must be one of debug, info, error or fatal/)
+        end
       end
 
       context 'with custom root dir' do
@@ -268,6 +297,7 @@ describe 'docker', :type => :class do
   context 'specific to RedHat' do
     let(:facts) { {
       :osfamily => 'RedHat',
+      :operatingsystem => 'RedHat',
       :operatingsystemrelease => '6.5'
     } }
 
@@ -282,13 +312,26 @@ describe 'docker', :type => :class do
     end
   end
 
+  context 'specific to Fedora 21 or above' do
+    let(:facts) { {
+      :osfamily => 'RedHat',
+      :operatingsystem => 'Family',
+      :operatingsystemrelease => '21.0'
+    } }
+
+    it { should contain_package('docker').with_name('docker') }
+    it { should_not contain_class('epel') }
+  end
+
   context 'specific to RedHat 7 or above' do
     let(:facts) { {
       :osfamily => 'RedHat',
+      :operatingsystem => 'RedHat',
       :operatingsystemrelease => '7.0'
     } }
 
     it { should contain_package('docker').with_name('docker') }
+    it { should_not contain_class('epel') }
   end
 
   context 'specific to Ubuntu Precise' do
@@ -324,6 +367,7 @@ describe 'docker', :type => :class do
   context 'specific to older RedHat based distros' do
     let(:facts) { {
       :osfamily => 'RedHat',
+      :operatingsystem => 'RedHat',
       :operatingsystemrelease => '6.4'
     } }
     it do
@@ -338,7 +382,7 @@ describe 'docker', :type => :class do
     it do
       expect {
         should contain_package('docker')
-      }.to raise_error(Puppet::Error, /^This module only works on Debian and Red Hat based systems/)
+      }.to raise_error(Puppet::Error, /This module only works on Debian and Red Hat based systems/)
     end
   end
 

@@ -10,17 +10,12 @@ class docker::install {
   validate_string($::kernelrelease)
   validate_bool($docker::use_upstream_package_source)
 
+  ensure_packages($docker::prerequired_packages)
+
   case $::osfamily {
     'Debian': {
-      ensure_packages($docker::prerequired_packages)
       if $docker::manage_package {
         Package['apt-transport-https'] -> Package['docker']
-      }
-
-      if $docker::version {
-        $dockerpackage = "${docker::package_name}-${docker::version}"
-      } else {
-        $dockerpackage = $docker::package_name
       }
 
       if ($docker::use_upstream_package_source) {
@@ -30,7 +25,7 @@ class docker::install {
           release           => 'docker',
           repos             => 'main',
           required_packages => 'debian-keyring debian-archive-keyring',
-          key               => 'A88D21E9',
+          key               => '36A1D7869245C8950F966E92D8576A8BA88D21E9',
           key_source        => 'https://get.docker.io/gpg',
           pin               => '10',
           include_src       => false,
@@ -76,12 +71,7 @@ class docker::install {
 
       $manage_kernel = false
 
-      if $docker::version {
-        $dockerpackage = "${docker::package_name}-${docker::version}"
-      } else {
-        $dockerpackage = $docker::package_name
-      }
-      if $::operatingsystem != 'Amazon' {
+      if ($::operatingsystem != 'Amazon') and ($::operatingsystem != 'Fedora') {
         if ($docker::use_upstream_package_source) {
           include 'epel'
           if $docker::manage_package {
@@ -108,6 +98,12 @@ class docker::install {
     if $docker::manage_package {
       Package[$kernelpackage] -> Package['docker']
     }
+  }
+
+  if $docker::version {
+    $dockerpackage = "${docker::package_name}-${docker::version}"
+  } else {
+    $dockerpackage = $docker::package_name
   }
 
   if $docker::manage_package {

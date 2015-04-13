@@ -7,8 +7,8 @@ class docker::params {
   $ensure                       = present
   $tcp_bind                     = undef
   $socket_bind                  = 'unix:///var/run/docker.sock'
+  $log_level                    = undef
   $socket_group                 = undef
-  $use_upstream_package_source  = true
   $service_state                = running
   $service_enable               = true
   $root_dir                     = undef
@@ -19,11 +19,21 @@ class docker::params {
   $no_proxy                     = undef
   $execdriver                   = undef
   $storage_driver               = undef
+  $dm_basesize                  = undef
+  $dm_fs                        = undef
+  $dm_mkfsarg                   = undef
+  $dm_mountopt                  = undef
+  $dm_blocksize                 = undef
+  $dm_loopdatasize              = undef
+  $dm_loopmetadatasize          = undef
+  $dm_datadev                   = undef
+  $dm_metadatadev               = undef
   $manage_package               = true
   $manage_kernel                = true
   $package_name_default         = 'lxc-docker'
   $service_name_default         = 'docker'
   $docker_command_default       = 'docker'
+  $docker_group                 = 'docker'
   case $::osfamily {
     'Debian' : {
       case $::operatingsystem {
@@ -38,33 +48,47 @@ class docker::params {
           $docker_command = 'docker.io'
         }
       }
-      $package_source_location = 'https://get.docker.io/ubuntu'
+      $package_source_location     = 'https://get.docker.io/ubuntu'
+      $use_upstream_package_source = true
+      $detach_service_in_init = true
     }
     'RedHat' : {
-      if (versioncmp($::operatingsystemrelease, '7.0') < 0) and $::operatingsystem != 'Amazon' {
+      if $::operatingsystem == 'Fedora' {
         $package_name   = 'docker-io'
+        $use_upstream_package_source = false
+      } elsif (versioncmp($::operatingsystemrelease, '7.0') < 0) and $::operatingsystem != 'Amazon' {
+        $package_name   = 'docker-io'
+        $use_upstream_package_source = true
       } else {
         $package_name   = 'docker'
+        $use_upstream_package_source = false
       }
       $package_source_location = ''
       $service_name   = $service_name_default
       $docker_command = $docker_command_default
+      if versioncmp($::operatingsystemrelease, '7.0') < 0 {
+        $detach_service_in_init = true
+      } else {
+        $detach_service_in_init = false
+        include docker::systemd_reload
+      }
     }
     'Archlinux' : {
+      $package_source_location     = ''
+      $use_upstream_package_source = false
       $package_name   = 'docker'
-      $package_source_location = ''
       $service_name   = $service_name_default
       $docker_command = $docker_command_default
-      exec { 'docker-systemd-reload':
-        command     => '/usr/bin/systemctl daemon-reload',
-        refreshonly => true,
-      }
-      }
+      $detach_service_in_init = false
+      include docker::systemd_reload
+    }
     default: {
-      $package_source_location = ''
+      $package_source_location     = ''
+      $use_upstream_package_source = true
       $package_name   = $package_name_default
       $service_name   = $service_name_default
       $docker_command = $docker_command_default
+      $detach_service_in_init = true
     }
   }
 
@@ -74,7 +98,7 @@ class docker::params {
   $prerequired_packages = $::operatingsystem ? {
     'Debian' => ['apt-transport-https', 'cgroupfs-mount'],
     'Ubuntu' => ['apt-transport-https', 'cgroup-lite', 'apparmor'],
-    default  => '',
+    default  => [],
   }
 
 }
