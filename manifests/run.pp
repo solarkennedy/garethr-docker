@@ -179,7 +179,7 @@ define docker::run(
       # This exec sequence will ensure the old-style CID container is stopped
       # before we replace the init script with the new-style.
       exec { "/bin/sh /etc/init.d/docker-${sanitised_title} stop":
-        onlyif  => ["/usr/bin/test -f /var/run/docker-${sanitised_title}.cid", "/usr/bin/test -f /etc/init.d/docker-${sanitised_title}"],
+        onlyif  => "/usr/bin/test -f /var/run/docker-${sanitised_title}.cid && /usr/bin/test -f /etc/init.d/docker-${sanitised_title}",
         require => [],
       } ->
       file { "/var/run/docker-${sanitised_title}.cid":
