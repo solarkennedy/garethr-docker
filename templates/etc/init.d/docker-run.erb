@@ -48,7 +48,6 @@ fi
 HOME=/root/
 docker="/usr/bin/<%= @docker_command %>"
 prog="docker-<%= @sanitised_title %>"
-cidfile="/var/run/$prog.cid"
 if [ -d /var/lock/subsys ]; then
     lockfile="/var/lock/subsys/$prog"
 else
@@ -58,68 +57,29 @@ fi
 start() {
     [ -x $docker ] || exit 5
 
-    <% if @use_name -%>
-    if [ "true" = "$($docker inspect --format='{{.State.Running}}' <%= @name %>"  ] ; then
-        failure
-        echo
-        printf "Container <%= @name %> is still running.\n"
-        exit 7
+    if [ "true" = "$($docker inspect --format='{{.State.Running}}' <%= @sanitised_title %>)" ]; then
+       failure
+       printf "Container <%= @sanitised_title %> is still running.\n"
+       exit 7
     fi
-    <% else -%>
-    if [ -f $cidfile ]; then
-        cid="$(cat $cidfile)"
-        if [ -n "$cid" ]; then
-            $docker ps --no-trunc=true|grep $cid
-            retval=$?
-            if [ $retval -eq 0 ]; then
-                failure
-                echo
-                printf "Container $cid is still running.\n"
-                exit 7
-            else
-                rm -f $lockfile
-            fi
-        fi
-    fi
-    <% end -%>
-
-    <% if @use_name %>
-    # If a container with this name already exists, we need to remove it
-    # before we can spin up a new container with that name. This avoids an
-    # error like this:
-    #
-    # Conflict, The name <%= @name %> is already assigned to $some_sha. You
-    # have to delete (or rename) that container to be able to assign
-    # <%= @name %> to a container again.
-    #
-    $docker rm <%= @name %> > /dev/null 2>&1
-    <% end %>
 
     printf "Starting $prog:\t"
+    $docker rm <%= @sanitised_title %> >/dev/null 2>&1
     <% if @pull_on_start -%>
         $docker pull <%= @image %>
     <% end -%>
-    if [ -f $cidfile ]; then
-    <% if @use_name -%>
-        $docker rm <%= @name %> >/dev/null 2>&1
-        $docker start <%= @name %>
-    <% else -%>
-        $docker start $(cat $cidfile)
-    <% end -%>
-    else
-        $docker run --cidfile=$cidfile \
-        <%= @docker_run_flags %> \
-        <% if @use_name %>--name <%= @name %><% end %> \
-        <% if @extra_parameters %><% @extra_parameters_array.each do |param| %>  \
-            <%= param %> <% end %> \
-        <% end -%> \
-        <%= @image %> \
-       <% if @command %> <%= @command %><% end %>
-    fi
+    $docker run \
+    <%= @docker_run_flags %> \
+    --name <%= @sanitised_title %> \
+    <% if @extra_parameters %><% @extra_parameters_array.each do |param| %>  \
+        <%= param %> <% end %> \
+    <% end -%> \
+    <%= @image %> \
+    <% if @command %> <%= @command %><% end %>
+
     retval=$?
     echo
     if [ $retval -eq 0 ]; then
-        [ -n "$lockfile" ] && touch $lockfile
         success
     else
         failure
@@ -127,26 +87,24 @@ start() {
 }
 
 stop() {
-    <% if @use_name -%>
-    $docker stop <%= @name %>
+    echo -n "Stopping $prog: "
+    $docker stop <%= @sanitised_title %>
+    $docker rm <%= @sanitised_title %>
     return $?
-    <% else -%>
+}
+
+clean() {
     if ! [ -f $cidfile ]; then
         failure
         echo
         printf "$cidfile does not exist.\n"
-        exit 7
     else
         cid="$(cat $cidfile)"
-        if [ -n $cid ]; then
-            echo -n $"Stopping $prog: "
-            $docker stop $(cat $cidfile)
-            retval=$?
-            [ $retval -eq 0 ] && rm -f $lockfile
-            return $retval
-        fi
+	rm $cidfile
+        $docker rm -f $cid
+        retval=$?
+        return $retval
     fi
-    <% end -%>
 }
 
 case "$1" in
@@ -157,11 +115,7 @@ case "$1" in
     stop
     ;;
     status)
-    <% if @use_name -%>
-    if [ "false" = "$($docker inspect --format='{{.State.Running}}' <%= @name %>"  ] ; then
-    <% else -%>
-    if [ "false" = "$($docker inspect --format='{{.State.Running}}' $(cat $cidfile))"  ] ; then
-    <% end -%>
+    if [ "false" = "$($docker inspect --format='{{.State.Running}}' <%= @sanitised_title %>)" ]; then
         echo $prog not running
         exit 1
     else
@@ -173,11 +127,19 @@ case "$1" in
     stop
     start
     ;;
+    clean)
+    clean
+    ;;
+    cleanRestart)
+    stop
+    clean
+    start
+    ;;
     condrestart)
     [ -f /var/lock/subsys/$prog ] && restart || :
     ;;
     *)
-    echo "Usage: $0 [start|stop|status|reload|restart|probe]"
+    echo "Usage: $0 [start|stop|status|reload|restart|probe|clean|cleanRestart]"
     exit 1
     ;;
 esac
