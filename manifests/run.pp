@@ -122,18 +122,6 @@ define docker::run(
         $hasrestart = false
         $uses_systemd = false
         $mode = '0755'
-
-        # When switching between styles of init scripts (e.g. upstart and sysvinit),
-        # we want to stop the service using the old init script. Since `service` will
-        # prefer a sysvinit style script over an upstart one if both exist, we need
-        # to stop the service before adding the sysvinit script.
-        exec { "/usr/sbin/service docker-${sanitised_title} stop":
-          onlyif  => "/usr/bin/test -f ${deprecated_initscript}"
-        } ->
-        file { $deprecated_initscript:
-          ensure => absent
-        } ->
-        File[$initscript]
       }
       'RedHat': {
         if versioncmp($::operatingsystemrelease, '7.0') < 0 {
