@@ -1,6 +1,27 @@
 # == Define: docker:run
 #
-# A define which manages an upstart managed docker container
+# A define which manages a running docker container.
+#
+# == Parameters
+#
+# [*restart*]
+# Sets a restart policy on the docker run.
+# Note: If set, puppet will NOT setup an init script to manage, instead
+# it will do a raw docker run command using a CID file to track the container 
+# ID.
+#
+# If you want a normal named container with an init script and a restart policy
+# you must use the extra_parameters feature and pass it in like this:
+#
+#    extra_parameters => ['--restart=always']
+#
+# This will allow the docker container to be restarted if it dies, without
+# puppet help.
+#
+# [*extra_parameters*]
+# An array of additional command line arguments to pass to the `docker run`
+# command. Useful for adding additional new or experimental options that the
+# module does not yet support.
 #
 define docker::run(
   $image,
@@ -96,11 +117,6 @@ define docker::run(
   $sanitised_title = regsubst($title, '[^0-9A-Za-z.\-]', '-', 'G')
   $sanitised_depends_array = regsubst($depends_array, '[^0-9A-Za-z.\-]', '-', 'G')
 
-  $provider = $::operatingsystem ? {
-    'Ubuntu' => 'upstart',
-    default  => undef,
-  }
-
   if $restart {
 
     $cidfile = "/var/run/docker-${sanitised_title}.cid"
@@ -181,7 +197,6 @@ define docker::run(
       enable     => true,
       hasstatus  => $hasstatus,
       hasrestart => $hasrestart,
-      provider   => $provider,
       require    => File[$initscript],
     }
 
